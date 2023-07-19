@@ -1,0 +1,128 @@
+{
+  "api": {
+    "services": [
+      "HandlerService",
+      "LoggerService",
+      "StatsService"
+    ],
+    "tag": "api"
+  },
+  "stats": {},
+  "reverse": null,
+  "fakeDns": null,
+  "log": null,
+  "dns": {
+    // Static hosts, similar to hosts file.
+    "hosts": {
+      // The following settings help to eliminate DNS poisoning in mainland China.
+      "domain:github.io": "pages.github.com",
+      "domain:wikipedia.org": "www.wikimedia.org",
+      "domain:shadowsocks.org": "electronicsrealm.com"
+    },
+    "servers": [
+      "https://dns.google/dns-query",
+      "https://dns.cloudflare.com/dns-query",
+      "1.1.1.1", {
+        "address": "114.114.114.114",
+        "port": 53,
+        "domains": ["geosite:cn"]
+      },
+      "8.8.8.8",
+      "localhost"
+    ]
+  },
+  "inbounds": [{
+      "listen": null,
+      "port": 1000,
+      "protocol": "vmess",
+      "settings": {
+        "clients": [{
+            "id": "UUID0 HERE",
+            "alterId": 0
+          },
+          {
+            "id": "UUID1 HERE",
+            "alterId": 1
+          }
+        ]
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/wsm",
+          "headers": {}
+        }
+      },
+      "tag": "my-vmess",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    }, {
+      "listen": null,
+      "port": 1001,
+      "protocol": "vless",
+      "settings": {
+        "clients": [{
+            "id": "UUID2 HERE",
+            "alterId": 2
+          }
+        ],
+        "decryption": "none",
+        "fallbacks": []
+      },
+      "streamSettings": {
+        "network": "ws",
+        "security": "none",
+        "wsSettings": {
+          "path": "/wsl",
+          "headers": {}
+        }
+      },
+      "tag": "my-vless",
+      "sniffing": {
+        "enabled": true,
+        "destOverride": [
+          "http",
+          "tls"
+        ]
+      }
+    }
+  ],
+  "outbounds": [{
+      "protocol": "freedom",
+      "settings": {}
+    }, {
+      "protocol": "blackhole",
+      "settings": {},
+      "tag": "blocked"
+    }
+  ],
+  "policy": {
+    "system": {
+      "statsInboundDownlink": true,
+      "statsInboundUplink": true
+    }
+  },
+  "transport": null,
+  "routing": {
+    "rules": [{
+        "type": "field",
+        "inboundTag": ["api"],
+        "outboundTag": "api"
+      }, {
+        "type": "field",
+        "ip": ["geoip:private"],
+        "outboundTag": "blocked"
+      }, {
+        "type": "field",
+        "protocol": ["bittorrent"],
+        "outboundTag": "blocked"
+      }
+    ]
+  }
+}

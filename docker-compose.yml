@@ -1,0 +1,133 @@
+version: '3.9'
+
+services:
+  traefik:
+    image: traefik:v2.9.5
+    ports:
+      - target: 80
+        published: 80
+        mode: host
+      - target: 443
+        published: 443
+        mode: host
+    networks: [web]
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=web
+      # Use the custom label "traefik.constraint-label=traefik"
+      # This public Traefik will only use services with this label
+      - traefik.constraint-label=traefik
+    command:
+      - --api       # Enable the Dashboard and API
+      - --api.dashboard
+      - --accesslog # Enable the access log, with HTTP requests
+      - --log       # Enable the Traefik log, for configurations and errors
+      - --providers.docker
+      - --providers.docker.exposedByDefault
+      - --providers.docker.constraints=Label(`traefik.constraint-label`, `traefik`)
+      - --entrypoints.web.address=:80
+      - --entrypoints.webs.address=:443
+      # Create the certificate resolver "le" for Let's Encrypt, uses the environment variable EMAIL
+      - --certificatesresolvers.le.acme.email=${EMAIL?variable not set}
+      - --certificatesresolvers.le.acme.storage=/certificates/acme.json
+      - --certificatesresolvers.le.acme.httpchallenge.entrypoint=web
+      #- --certificatesresolvers.le.acme.tlschallenge=true
+      - --certificatesresolvers.le.acme.caserver=https://acme-v02.api.letsencrypt.org/directory
+      #- --certificatesresolvers.le.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ~/letsencrypt:/certificates
+
+  certsdump:
+    image: ldez/traefik-certs-dumper:v2.8.1
+    depends_on:
+      - traefik
+    entrypoint: sh -c 'apk add jq;
+      while ! [ -e /data/acme.json ] || ! [ `jq ".[] | .Certificates | length" /data/acme.json` != 0 ];
+      do
+      sleep 5;
+      done &&
+      traefik-certs-dumper file --version v2 --domain-subdir --clean=false --watch --source ./acme.json --dest .'
+    volumes:
+      - ~/letsencrypt:/data
+    working_dir: /data
+
+  caddy:
+    image: caddy:2.6-alpine
+    command: caddy file-server
+    networks: [web]
+    volumes:
+      - ~/index.html:/srv/index.html
+
+  trojan:
+    image: teddysun/trojan:1.16.0
+    networks: [web]
+    depends_on:
+      - traefik
+    labels:
+      - traefik.constraint-label=traefik
+      - traefik.tcp.routers.tgo.entrypoints=webs
+      - traefik.tcp.routers.tgo.rule=HostSNI(`my.domain.com`)
+      - traefik.tcp.routers.tgo.tls=true
+      - traefik.tcp.routers.tgo.tls.passthrough=true
+      - traefik.tcp.routers.tgo.tls.certresolver=le
+      - traefik.tcp.services.tgo.loadbalancer.server.port=443
+    volumes:
+      - ~/trojan.json:/etc/trojan/config.json
+      - ~/letsencrypt:/etc/data
+
+  vpn:
+    image: v2fly/v2fly-core:v5.4.1
+    command: run -c /etc/v2fly/config.json
+    ports:
+      - target: 1000
+        published: 1000
+        mode: host
+      - target: 1001
+        published: 1001
+        mode: host
+    networks: [web]
+    depends_on:
+      - traefik
+    labels:
+      - traefik.constraint-label=traefik
+      - traefik.http.routers.api1.entrypoints=webs
+      - traefik.http.routers.api1.tls.domains[0].main=my2.domain.com
+      - traefik.http.routers.api1.rule=PathPrefix(`/wsm`)
+      - traefik.http.routers.api1.tls=true
+      - traefik.http.routers.api1.tls.certresolver=le
+      - traefik.http.routers.api1.service=api1
+      - traefik.http.services.api1.loadbalancer.server.port=1000
+      - traefik.http.routers.api2.entrypoints=webs
+      - traefik.http.routers.api2.tls.domains[0].main=my2.domain.com
+      - traefik.http.routers.api2.rule=PathPrefix(`/wsl`)
+      - traefik.http.routers.api2.tls=true
+      - traefik.http.routers.api2.tls.certresolver=le
+      - traefik.http.routers.api2.service=api2
+      - traefik.http.services.api2.loadbalancer.server.port=1001
+    volumes:
+      - type: bind
+        source: ~/v2ray.json
+        target: /etc/v2fly/config.json
+
+  xray:
+    image: teddysun/xray:1.8.3
+    ports:
+      - target: 443
+        published: 999
+        mode: host
+    networks: [web]
+    depends_on:
+      - traefik
+    labels:
+      - traefik.constraint-label=traefik
+      - traefik.tcp.routers.apix.entrypoints=webs
+      - traefik.tcp.routers.apix.rule=HostSNI(`my3.domain.com`)
+      - traefik.tcp.routers.apix.tls=true
+      - traefik.tcp.routers.apix.tls.passthrough=true
+      - traefik.tcp.services.apix.loadbalancer.server.port=443
+    volumes:
+      - ~/xray.json:/etc/xray/config.json
+
+networks:
+  web:
