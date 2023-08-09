@@ -29,7 +29,8 @@ Follow through these steps to have a working VPN with trojan, v2ray and xray at 
    apt-get install curl
    # Download Docker
    curl -fsSL get.docker.com -o get-docker.sh
-   # Install Docker using the stable channel (instead of the default "edge") CHANNEL=stable sh get-docker.sh
+   # Install Docker using the stable channel (instead of the default "edge")
+   CHANNEL=stable sh get-docker.sh
    # Remove install script
    rm get-docker.sh
    ```
